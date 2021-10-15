@@ -1,24 +1,29 @@
-#!/usr/bin/env sh
+#!/usr/bin/env bash
 set -e
 
-kubectl=kubectl
+kubectl=oc
 version=1.5.3
+
 generator=""
 node=""
+
 nodefaultctx=0
 nodefaultns=0
-cmd='[ "nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid", "--"'
+
+cmd='["nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid", "--"'
+
 if [ -t 0 ]; then
   tty=true
 else
   tty=false
 fi
+
 while [ $# -gt 0 ]; do
   key="$1"
 
   case $key in
   -v | --version)
-    echo "kubectl-node-shell $version"
+    echo "oc-node-shell $version"
     exit 0
     ;;
   --context)
@@ -89,14 +94,14 @@ if [ -z "$node" ]; then
   exit 1
 fi
 
-image="${KUBECTL_NODE_SHELL_IMAGE:-dimaskiddo/debian:base}"
-pod="nsenter-$(env LC_ALL=C tr -dc a-z0-9 </dev/urandom | head -c 6)"
+image="${KUBECTL_NODE_SHELL_IMAGE:-busybox:1.34.0}"
+pod="nsenter-$(tr -dc a-z0-9 < /dev/urandom | head -c 6)"
 
 # Check the node
-$kubectl get node "$node" >/dev/null || exit 1
+$kubectl get node "$node" > /dev/null || exit 1
 
 overrides="$(
-  cat <<EOT
+  cat << EOT
 {
   "spec": {
     "nodeName": "$node",
@@ -130,7 +135,7 @@ overrides="$(
 EOT
 )"
 
-# Support Kubectl <1.18
+# Support Kubectl < 1.18
 m=$(kubectl version --client --output yaml | awk -F'[ :"]+' '$2 == "minor" {print $3+0}')
 if [ "$m" -lt 18 ]; then
   generator="--generator=run-pod/v1"
