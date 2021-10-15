@@ -7,10 +7,8 @@ version=1.5.3
 generator=""
 node=""
 
-nodefaultctx=0
-nodefaultns=0
-
-cmd='["nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid", "--"'
+image="busybox:1.34.0"
+cmd='[ "nsenter", "--target", "1", "--mount", "--uts", "--ipc", "--net", "--pid", "--"'
 
 if [ -t 0 ]; then
   tty=true
@@ -25,26 +23,6 @@ while [ $# -gt 0 ]; do
   -v | --version)
     echo "oc-node-shell $version"
     exit 0
-    ;;
-  --context)
-    nodefaultctx=1
-    kubectl="$kubectl --context $2"
-    shift
-    shift
-    ;;
-  --kubecontext=*)
-    nodefaultctx=1
-    kubectl="$kubectl --context=${key##*=}"
-    shift
-    ;;
-  --kubeconfig)
-    kubectl="$kubectl --kubeconfig $2"
-    shift
-    shift
-    ;;
-  --kubeconfig=*)
-    kubectl="$kubectl --kubeconfig=${key##*=}"
-    shift
     ;;
   -n | --namespace)
     nodefaultns=1
@@ -73,10 +51,6 @@ while [ $# -gt 0 ]; do
   esac
 done
 
-# Set the default context and namespace to avoid situations where the user switch them during the build process
-[ "$nodefaultctx" = 1 ] || kubectl="$kubectl --context=$(${kubectl} config current-context)"
-[ "$nodefaultns" = 1 ] || kubectl="$kubectl --namespace=$(${kubectl} config view --minify --output 'jsonpath={.contexts..namespace}')"
-
 if [ $# -gt 0 ]; then
   while [ $# -gt 0 ]; do
     cmd="$cmd, \"$(echo "$1" | \
@@ -94,11 +68,14 @@ if [ -z "$node" ]; then
   exit 1
 fi
 
-image="${KUBECTL_NODE_SHELL_IMAGE:-busybox:1.34.0}"
-pod="nsenter-$(tr -dc a-z0-9 < /dev/urandom | head -c 6)"
-
-# Check the node
+# Check if The Node Exist
 $kubectl get node "$node" > /dev/null || exit 1
+
+# Support Kubectl < 1.18
+m=$(kubectl version --client --output yaml | awk -F'[ :"]+' '$2 == "minor" {print $3+0}')
+if [ "$m" -lt 18 ]; then
+  generator="--generator=run-pod/v1"
+fi
 
 overrides="$(
   cat << EOT
@@ -126,6 +103,10 @@ overrides="$(
         "operator": "Exists"
       },
       {
+        "effect": "NoSchedule",
+        "operator": "Exists"
+      },
+      {
         "effect": "NoExecute",
         "operator": "Exists"
       }
@@ -135,11 +116,7 @@ overrides="$(
 EOT
 )"
 
-# Support Kubectl < 1.18
-m=$(kubectl version --client --output yaml | awk -F'[ :"]+' '$2 == "minor" {print $3+0}')
-if [ "$m" -lt 18 ]; then
-  generator="--generator=run-pod/v1"
-fi
+pod="nsenter-$(tr -dc a-z0-9 < /dev/urandom | head -c 6)"
 
 trap "EC=\$?; $kubectl delete pod $pod >&2 || true; exit \$EC" EXIT INT TERM
 
