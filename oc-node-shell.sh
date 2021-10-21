@@ -4,7 +4,7 @@ set -e
 kubectl=oc
 version=1.5.3
 
-generator=""
+generator="--generator=run-pod/v1"
 node=""
 
 image="busybox:1.34.0"
@@ -70,12 +70,6 @@ fi
 
 # Check if The Node Exist
 $kubectl get node "$node" > /dev/null || exit 1
-
-# Support Kubectl < 1.18
-m=$(kubectl version --client --output yaml | awk -F'[ :"]+' '$2 == "minor" {print $3+0}')
-if [ "$m" -lt 18 ]; then
-  generator="--generator=run-pod/v1"
-fi
 
 overrides="$(
   cat << EOT
